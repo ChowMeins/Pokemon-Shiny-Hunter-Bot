@@ -8,10 +8,10 @@ Connect the Arduino and Webcam to your PC.
 In order to use this program, you must upload the shinyHuntSetup.ino to the Arduino Nano and make sure you are connected to the right COM port.
 Once uploaded, run the Python program.
 
-First image
+First image <br/>
 ![image](https://github.com/ChowMeins/Pokemon-Shiny-Hunter-Bot/assets/101289297/ca9f0802-5bfa-432a-8120-a103feb225e7)
 
-Final Results
+Final Results <br/>
 ![image](https://github.com/ChowMeins/Pokemon-Shiny-Hunter-Bot/assets/101289297/99df5469-38aa-4cb5-9e82-29608a425a1b)
 
 Flaws:
