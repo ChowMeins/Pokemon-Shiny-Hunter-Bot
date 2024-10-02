@@ -1,4 +1,5 @@
 #include <Servo.h>
+using namespace std;
 
 Servo servo1; // Pin 2, controls buttons B and X
 Servo servo2; // Pin 3, controls buttons A and Y
@@ -7,9 +8,12 @@ Servo servo4;
 Servo servo5;
 Servo servos[5];
 int servoPins[] = {2,3,6,7,8};
-char input;
+int sensorPin = A0;
+int sensor;
+
+int input;
 int defaultPos = 90;
-int aPos = 170;
+int aPos = 150;
 int bPos = 55;
 int xPos = 145;
 int yPos = 50;
@@ -25,34 +29,34 @@ Servo 3 = Start + Select
 Servo 4 = L and R
 Servo 5 = U and D
 */
-void sendInput(Servo servo, int rotationAmount) {
-  //servo.write(rotationAmount);
-  
-  while(servo.read() != rotationAmount) {
-    int currRotation = servo.read();
-    if(servo.read() < rotationAmount) {
-      servo.write(currRotation + 1);
-      delay(2.5);
+void sendInput(Servo servo, int rotationAmount, int delayTime) {
+  delayTime = delayTime < 100 ? 100 : delayTime;
+  int currRotation = servo.read();
+  // Initiate actuation of arduino
+  while(currRotation != rotationAmount) {
+    currRotation = servo.read();
+    if(currRotation < rotationAmount) {
+      currRotation++;
+    } else {
+      currRotation--;
     }
-    else if (servo.read() > rotationAmount)  {
-      servo.write(currRotation - 1);
-      delay(2.5);
-    }
+    servo.write(currRotation);
+    delay(2.5);
   }
-  delay(100);
-  while(servo.read() != defaultPos) {
-    int currRotation = servo.read();
-    if(servo.read() < defaultPos) {
-      servo.write(currRotation + 1);
-      delay(2.5);
+  delay(delayTime);
+
+  // Release servo from button
+  while(currRotation != defaultPos) {
+      currRotation = servo.read();
+    if(currRotation < defaultPos) {
+      currRotation++;
     }
-    else if (servo.read() > defaultPos)  {
-      servo.write(currRotation - 1);
-      delay(2.5);
+    else {
+      currRotation--;
     }
+    servo.write(currRotation);
+    delay(2.5);
   }
-  
-  //servo.write(defaultPos);
 }
 void setup() {
   // put your setup code here, to run once:
@@ -64,41 +68,46 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-    input = Serial.read();
-    if (input != NULL) {
-    //Serial.print(input);
-    switch(input) {
-        case 'a':
-          sendInput(servos[1], aPos);
-          break;
-        case 'b':
-          sendInput(servos[0], bPos);
-          break;
-        case 'x':
-          sendInput(servos[0], xPos);
-          break;
-        case 'y':
-          sendInput(servos[1], yPos);
-          break;
-        case 'u':
-          sendInput(servos[4], uPos);
-          break;
-        case 'd':
-          sendInput(servos[4], dPos);
-          break;
-        case 'l':
-          sendInput(servos[3], lPos);
-          break;
-        case 'r':
-          sendInput(servos[3], rPos);
-          break;
-        case 'e':
-          sendInput(servos[2], resetPos);
-          break;
-        case 'f':
-          Serial.flush();
-          break;
-      break;
-      }
+    String inputString = Serial.readString();
+    //Serial.print(inputString);
+    int sensorValue = analogRead(sensorPin);
+    input = inputString[0];
+    int delayTime = inputString.substring(1, inputString.length()).toInt();
+
+    if (input != '\0') {
+      Serial.print(input); Serial.print(", "); Serial.print(delayTime); Serial.print(", "); Serial.print(sensorValue); Serial.print("\n\0");
+      switch(input) {
+          case 'a':
+            sendInput(servos[1], aPos, delayTime);
+            break;
+          case 'b':
+            sendInput(servos[0], bPos, delayTime);
+            break;
+          case 'x':
+            sendInput(servos[0], xPos, delayTime);
+            break;
+          case 'y':
+            sendInput(servos[1], yPos, delayTime);
+            break;
+          case 'u':
+            sendInput(servos[4], uPos, delayTime);
+            break;
+          case 'd':
+            sendInput(servos[4], dPos, delayTime);
+            break;
+          case 'l':
+            sendInput(servos[3], lPos, delayTime);
+            break;
+          case 'r':
+            sendInput(servos[3], rPos, delayTime);
+            break;
+          case 'e':
+            sendInput(servos[2], resetPos, delayTime);
+            break;
+          case 'f':
+            Serial.flush();
+            break;
+        break;
+        }
     }
 }
