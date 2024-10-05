@@ -8,23 +8,18 @@ from BW2Starter import BW2Starter
 from HGSSRandomEncounters import HGSSRandomEncounters
 from webcam import record, requestFeed
 
-def readSensor():
-    while(True):
-        globals.sensorVal = globals.ser.readline().decode('ASCII').strip().split(", ")
-        print(globals.sensorVal)
-
 if __name__ == '__main__':
     # Connect to Arduino
     print("Connecting to Arduino...")
-    globals.ser = serial.Serial(port='COM6', baudrate=9600, timeout=5)
+    globals.ser = serial.Serial(port='COM6', baudrate=9600, timeout=10)
     print("Connected to", globals.ser.name)
     time.sleep(2)
 
-    option = input("Enter an option (press a number):\n1.) Pokemon BW2 Starter\n2.) Pokemon HGSS Safari Zone Encounters\n")
+    option = input("Enter an option (press a number):\n1.) Pokemon BW2 Starter\n2.) Pokemon HGSS Random Encounters\n")
     print("Loading webcam...")
     # Connect to Webcam
-    globals.vid = cv2.VideoCapture(0)
-    if (globals.vid):
+    globals.webcam = cv2.VideoCapture(0)
+    if (globals.webcam):
         print("Webcam loaded. Opening window...")
     else:
         exit()
@@ -46,15 +41,10 @@ if __name__ == '__main__':
         t2 = threading.Thread(target=HGSSRandomEncounters)
         t2.start()
 
-    t3 = threading.Thread(target=readSensor)
-    t3.start()
-
     t1.join()
     t2.join()
-    t3.join()
-
 
     print("Program terminating...")
     # Close all windows
-    globals.vid.release()
+    globals.webcam.release()
     cv2.destroyAllWindows()

@@ -36,7 +36,6 @@ def colorPixel(pixel, frame):
 
 # Takes the average of all RGB values within the uglobals.ser's border
 def findThresholdExceededCount(pixel, frame):
-    global referencePhoto
 
     areaHeight = 9
     areaWidth = 13
@@ -45,7 +44,7 @@ def findThresholdExceededCount(pixel, frame):
     for i in range(areaHeight):
         for j in range(areaWidth):
             currPixelRGBValues = frame[pixel[0] - int(areaHeight / 2) + i, pixel[1] - int(areaWidth / 2) + j].astype('int32')
-            referencePixelRGBValues = referencePhoto[pixel[0] - int(areaHeight / 2) + i, pixel[1] - int(areaWidth / 2) + j].astype('int32')
+            referencePixelRGBValues = globals.referencePhoto[pixel[0] - int(areaHeight / 2) + i, pixel[1] - int(areaWidth / 2) + j].astype('int32')
             pixelDiffs = abs(currPixelRGBValues - referencePixelRGBValues)
             #print("Current:", currPixelRGBValues, ", Original:", referencePixelRGBValues, ", Difference: ", pixelDiffs)
             if (pixelDiffs[2] >= RGBthreshold or pixelDiffs[1] >= RGBthreshold or pixelDiffs[0] >= RGBthreshold):
@@ -54,57 +53,63 @@ def findThresholdExceededCount(pixel, frame):
 
 def BW2Starter():
     threshold = 15
+    starter = input("Select your Starter (enter a number):\n1.) Snivy\n2.) Tepig\n3. Oshawott\n")
+    resets = 0
 
     while not globals.stop_threads:
         # Start of reset and load into game
-        sendCommand(globals.ser, 'f', 1)
-        sendCommand(globals.ser, 'e', 1.5)
-        sendCommand(globals.ser, 'a', 10.5)
-        sendCommand(globals.ser, 'a', 1.25)
-        sendCommand(globals.ser, 'a', 2)
-        sendCommand(globals.ser, 'a', 3)
+        sendCommand(globals.ser, 'f\n', 1)
+        sendCommand(globals.ser, 'e\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 10.5)
+        sendCommand(globals.ser, 'a\n', 1.25)
+        sendCommand(globals.ser, 'a\n', 2)
+        sendCommand(globals.ser, 'a\n', 3)
 
         # Loaded into game, talk to Bianca   
-        sendCommand(globals.ser, 'a', 5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
+        sendCommand(globals.ser, 'a\n', 5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
 
         # Select Tepig
-        sendCommand(globals.ser, 'a', 6.5)     
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
+        sendCommand(globals.ser, 'a\n', 6.5)    
+        if (starter == "1"):
+            sendCommand(globals.ser, 'l\n', 1.5)
+        elif (starter == "3"):
+            sendCommand(globals.ser, 'r\n', 1.5) 
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
 
         # Receive Tepig
-        sendCommand(globals.ser, 'a', 9)        
-        sendCommand(globals.ser, 'a', 1.5)
+        sendCommand(globals.ser, 'a\n', 9)        
+        sendCommand(globals.ser, 'a\n', 1.5)
 
         # Decline nickname option
-        sendCommand(globals.ser, 'b', 1.5)
-        sendCommand(globals.ser, 'a', 2)
+        sendCommand(globals.ser, 'b\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 2)
 
         # Recieve Pokedex
-        sendCommand(globals.ser, 'a', 3.5)
-        sendCommand(globals.ser, 'a', 4.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
+        sendCommand(globals.ser, 'a\n', 3.5)
+        sendCommand(globals.ser, 'a\n', 4.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
 
         # Finish dialogue, open menu and select Tepig
-        sendCommand(globals.ser, 'x', 1.25)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1.5)
-        sendCommand(globals.ser, 'a', 1)
+        sendCommand(globals.ser, 'x\n', 1.25)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1.5)
+        sendCommand(globals.ser, 'a\n', 1)
 
-        time.sleep(2) # Wait for starter pokemon to be visible
+        time.sleep(6) # Wait for starter pokemon to be visible
         requestFeed(globals.webcam)
         # Read RGB values
         # On first reset, determine which pixel to read
-        if (globals.resets == 0):
-            while(globals.vid.isOpened()):
+        if (resets == 0):
+            while(globals.webcam.isOpened()):
                 if (globals.referencePhoto is not None):
                     currImg = np.copy(globals.referencePhoto)
                     determinePixel(globals.pixel)

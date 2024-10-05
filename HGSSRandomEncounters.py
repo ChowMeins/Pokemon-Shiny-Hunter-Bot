@@ -1,23 +1,99 @@
-from globals import stop_threads, requestFeed, referencePhoto, currentPhoto, webcam, pixel, resets, sensorVal, ser, vid
+import globals as g
 import time
 
+def readSensor() -> int:
+    g.ser.write(b'light\n')
+    light = g.ser.readline().decode('ASCII').strip()
+    #print(light)
+    return int(light)
+
 def sendCommand(ser, command, delay):
-    globals.ser.write(bytes(command, 'UTF-8'))
+    ser.write(f'{command}'.encode('utf-8'))
     time.sleep(delay)
 
+def compareLight(start: int, range: int) -> bool:
+    curr = readSensor()
+    #print(f"Start light level: {start}, Current light level: {curr}")
+    if (start - range <= curr <= start + range):
+        return False
+    return True
+def runAway(): # Executes run away sequence
+    sendCommand(g.ser, 'l\n' , 0.75)
+    sendCommand(g.ser, 'l\n', 0.75)
+    sendCommand(g.ser, 'r\n', 0.75)
+    sendCommand(g.ser, 'a1500\n', 0.75)
+    sendCommand(g.ser, 'a\n', 2)
+
 def HGSSRandomEncounters():
-    global stop_threads
-    global referencePhoto
-    global currentPhoto
-    global requestFeed
-    global pixel
-    global resets
-    global webcam
 
     tileCount = input("Enter the number of tiles of grass from left to right.\n")
-    delay = str(150 * int(tileCount))
-    while not stop_threads:
+    delay = str(125 * int(tileCount))
+    encounters = 0
+    encounterDuration = None
+    shinyFound = False
+    average = 0
+    totalDuration = 0
+
+    # Execute while loop
+    while not g.stop_threads:
+        startLightVal = readSensor()
+        print(f"Starting light value: {startLightVal}")
+        time.sleep(1)
+        # Execute the movement of player left and right
         encounterFound = False
         while (encounterFound == False):
-            sendCommand(ser, 'l' + delay , 2)
-            sendCommand(ser, 'r' + delay , 2)
+            if(compareLight(startLightVal, 400)):
+                break
+            sendCommand(g.ser, 'l' + delay + '\n', 0)
+            if(compareLight(startLightVal, 400)):
+                break
+            sendCommand(g.ser, 'r' + delay + '\n' , 0)
+            if(compareLight(startLightVal, 400)):
+                break
+        start = time.perf_counter()
+        blackScreenLight = readSensor()
+        print(f"Black screen light level: {blackScreenLight}")
+        while (True):
+            if (compareLight(blackScreenLight, 400)):
+                time.sleep(0.1)
+                break
+        encounters += 1
+        time.sleep(0.75) # Sleep 1 second because of bright screen that appears for a short period of time
+        # Start timer
+        encounterLight = readSensor() # Light level while encounter occurs
+        print(f"Encounter light level: {encounterLight}")
+        # Compare the light levels of the encounter screen and the "fight" button 
+        while(compareLight(encounterLight, 20) == False):
+            time.sleep(0.5)
+        print(f"Fight light level: {readSensor()}") # Light level when fight button appears
+        # End timer when "fight" button appears on screen
+        end = time.perf_counter()
+        encounterDuration = end - start
+        totalDuration += encounterDuration
+        average = totalDuration / encounters
+        print(f"Encounter duration: {encounterDuration} seconds")
+        # Initialize encounter duration for rest of execution
+        if (encounters == 1):
+            input("Make sure the current encounter isn't shiny.\nPress enter to continue...")
+        # If current encounter duration exceeds 1 seconds compared to the first encounter duration initialized, declare that shiny has been found\
+        if(((encounterDuration) - average) > 1.10):
+            while(True):
+                option = input("Shiny has been found! Enter Y/N to confirm the shiny.\n").strip().lower()
+                if (option in ['y', 'n']):
+                    if option == 'y':
+                        print("Congratulations on your shiny!")
+                        shinyFound = True
+                        break
+                    else:
+                        print("Shiny not found. Continuing execution...")
+                        break
+                else:
+                    print("Invalid input, try again.")
+        if(shinyFound == True):
+            g.stop_threads = True
+            break
+        runAway()
+
+        print(f"Encounters: {encounters}, Encounter duration: {encounterDuration}, difference: {(encounterDuration - average)}, average: {average}")
+        while(compareLight(startLightVal, 20)):
+            time.sleep(0.5)

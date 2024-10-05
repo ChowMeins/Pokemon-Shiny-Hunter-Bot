@@ -30,7 +30,6 @@ Servo 4 = L and R
 Servo 5 = U and D
 */
 void sendInput(Servo servo, int rotationAmount, int delayTime) {
-  delayTime = delayTime < 100 ? 100 : delayTime;
   int currRotation = servo.read();
   // Initiate actuation of arduino
   while(currRotation != rotationAmount) {
@@ -68,46 +67,50 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-    String inputString = Serial.readString();
-    //Serial.print(inputString);
-    int sensorValue = analogRead(sensorPin);
-    input = inputString[0];
-    int delayTime = inputString.substring(1, inputString.length()).toInt();
+    String inputString = Serial.readStringUntil('\n');
+    if (inputString == "light") {
+      Serial.println(analogRead(sensorPin));
+    }
+    else {
+      input = inputString[0];
+      int delayTime = inputString.substring(1, inputString.length()).toInt();
+      delayTime = delayTime < 100 ? 100 : delayTime;
 
-    if (input != '\0') {
-      Serial.print(input); Serial.print(", "); Serial.print(delayTime); Serial.print(", "); Serial.print(sensorValue); Serial.print("\n\0");
-      switch(input) {
-          case 'a':
-            sendInput(servos[1], aPos, delayTime);
-            break;
-          case 'b':
-            sendInput(servos[0], bPos, delayTime);
-            break;
-          case 'x':
-            sendInput(servos[0], xPos, delayTime);
-            break;
-          case 'y':
-            sendInput(servos[1], yPos, delayTime);
-            break;
-          case 'u':
-            sendInput(servos[4], uPos, delayTime);
-            break;
-          case 'd':
-            sendInput(servos[4], dPos, delayTime);
-            break;
-          case 'l':
-            sendInput(servos[3], lPos, delayTime);
-            break;
-          case 'r':
-            sendInput(servos[3], rPos, delayTime);
-            break;
-          case 'e':
-            sendInput(servos[2], resetPos, delayTime);
-            break;
-          case 'f':
-            Serial.flush();
-            break;
-        break;
+      if (input != '\0') {
+        //Serial.print(input); Serial.print(", "); Serial.print(delayTime); Serial.print("\n\0");
+        switch(input) {
+            case 'a':
+              sendInput(servos[1], aPos, delayTime);
+              break;
+            case 'b':
+              sendInput(servos[0], bPos, delayTime);
+              break;
+            case 'x':
+              sendInput(servos[0], xPos, delayTime);
+              break;
+            case 'y':
+              sendInput(servos[1], yPos, delayTime);
+              break;
+            case 'u':
+              sendInput(servos[4], uPos, delayTime);
+              break;
+            case 'd':
+              sendInput(servos[4], dPos, delayTime);
+              break;
+            case 'l':
+              sendInput(servos[3], lPos, delayTime);
+              break;
+            case 'r':
+              sendInput(servos[3], rPos, delayTime);
+              break;
+            case 'e':
+              sendInput(servos[2], resetPos, delayTime);
+              break;
+            case 'f':
+              Serial.flush();
+              break;
+          break;
         }
+      }
     }
 }
