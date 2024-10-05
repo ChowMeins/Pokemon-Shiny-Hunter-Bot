@@ -1,1 +1,5 @@
-__pycache__
+# Files to ignore in GitHub
+__pycache__/
+arduinotest.py
+camtest.py
+*.jpg

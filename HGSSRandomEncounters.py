@@ -11,17 +11,17 @@ def sendCommand(ser, command, delay):
     ser.write(f'{command}'.encode('utf-8'))
     time.sleep(delay)
 
-def compareLight(start: int, range: int) -> bool:
+def compareLight(start: int, bound: int) -> bool:
     curr = readSensor()
     #print(f"Start light level: {start}, Current light level: {curr}")
-    if (start - range <= curr <= start + range):
+    if (curr in range(start - bound, start + bound)):
         return False
     return True
 def runAway(): # Executes run away sequence
     sendCommand(g.ser, 'l\n' , 0.75)
     sendCommand(g.ser, 'l\n', 0.75)
     sendCommand(g.ser, 'r\n', 0.75)
-    sendCommand(g.ser, 'a1500\n', 0.75)
+    sendCommand(g.ser, 'a1000\n', 0.75)
     sendCommand(g.ser, 'a\n', 2)
 
 def HGSSRandomEncounters():
@@ -36,25 +36,24 @@ def HGSSRandomEncounters():
 
     # Execute while loop
     while not g.stop_threads:
+        time.sleep(1)
         startLightVal = readSensor()
         print(f"Starting light value: {startLightVal}")
-        time.sleep(1)
         # Execute the movement of player left and right
-        encounterFound = False
-        while (encounterFound == False):
-            if(compareLight(startLightVal, 400)):
+        while (True):
+            if(compareLight(startLightVal, 200)):
                 break
             sendCommand(g.ser, 'l' + delay + '\n', 0)
-            if(compareLight(startLightVal, 400)):
+            if(compareLight(startLightVal, 200)):
                 break
             sendCommand(g.ser, 'r' + delay + '\n' , 0)
-            if(compareLight(startLightVal, 400)):
+            if(compareLight(startLightVal, 200)):
                 break
         start = time.perf_counter()
         blackScreenLight = readSensor()
         print(f"Black screen light level: {blackScreenLight}")
         while (True):
-            if (compareLight(blackScreenLight, 400)):
+            if (compareLight(blackScreenLight, 200)):
                 time.sleep(0.1)
                 break
         encounters += 1
@@ -93,7 +92,9 @@ def HGSSRandomEncounters():
             g.stop_threads = True
             break
         runAway()
-
         print(f"Encounters: {encounters}, Encounter duration: {encounterDuration}, difference: {(encounterDuration - average)}, average: {average}")
-        while(compareLight(startLightVal, 20)):
+        time.sleep(2) # Wait for screen to brighten back up from run away animation
+        while(True):
+            if compareLight(blackScreenLight, 50):
+                break
             time.sleep(0.5)
