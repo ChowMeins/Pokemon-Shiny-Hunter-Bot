@@ -56,7 +56,9 @@ void sendInput(Servo servo, int rotationAmount, int delayTime) {
     servo.write(currRotation);
     delay(2.5);
   }
+  delay(250);
 }
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
