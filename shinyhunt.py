@@ -17,7 +17,7 @@ if __name__ == '__main__':
     userInput = int(input("Which port would you like to connect to? "))
     selectedPort = ports[userInput].name
     print("Connecting to Arduino...")
-    globals.ser = serial.Serial(port=selectedPort, baudrate=9600, timeout=10)
+    globals.ser = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=10)
     print("Connected to", globals.ser.name)
     time.sleep(2)
 

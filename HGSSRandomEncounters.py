@@ -5,7 +5,7 @@ def readSensor() -> int:
     try:
         g.ser.write(b'light\n')
         light = g.ser.readline().decode('ASCII').strip()
-        print(f'Sensor value: {light}')
+        #print(f'Sensor value: {light}')
         return int(light)
     except Exception as e:
         print("Error occured")
@@ -42,7 +42,7 @@ def HGSSRandomEncounters():
     while not g.stop_threads:
         time.sleep(1)
         startLightVal = readSensor()
-        print(f"Starting light value: {startLightVal}")
+        #print(f"Starting light value: {startLightVal}")
         # Execute the movement of player left and right
         while (True):
             if not (compareLight(75, 100)):
