@@ -3,7 +3,6 @@ import keyboard
 import globals
 import time
 import numpy as np
-import globals
 from webcam import requestFeed
 
 # Sends commands to arduino

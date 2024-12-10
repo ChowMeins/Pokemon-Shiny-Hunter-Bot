@@ -2,10 +2,14 @@ import globals as g
 import time
 
 def readSensor() -> int:
-    g.ser.write(b'light\n')
-    light = g.ser.readline().decode('ASCII').strip()
-    #print(light)
-    return int(light)
+    try:
+        g.ser.write(b'light\n')
+        light = g.ser.readline().decode('ASCII').strip()
+        print(f'Sensor value: {light}')
+        return int(light)
+    except Exception as e:
+        print("Error occured")
+        raise
 
 def sendCommand(ser, command, delay):
     ser.write(f'{command}'.encode('utf-8'))
@@ -38,7 +42,7 @@ def HGSSRandomEncounters():
     while not g.stop_threads:
         time.sleep(1)
         startLightVal = readSensor()
-        #print(f"Starting light value: {startLightVal}")
+        print(f"Starting light value: {startLightVal}")
         # Execute the movement of player left and right
         while (True):
             if not (compareLight(75, 100)):

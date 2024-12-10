@@ -4,14 +4,20 @@ import time
 import cv2
 import threading
 import globals
+from serial.tools import list_ports
 from BW2Starter import BW2Starter
 from HGSSRandomEncounters import HGSSRandomEncounters
 from webcam import record, requestFeed
 
 if __name__ == '__main__':
     # Connect to Arduino
+    ports = list_ports.comports()
+    for i, port in enumerate(ports):
+        print(f'{i} : {port}')
+    userInput = int(input("Which port would you like to connect to? "))
+    selectedPort = ports[userInput].name
     print("Connecting to Arduino...")
-    globals.ser = serial.Serial(port='COM6', baudrate=9600, timeout=10)
+    globals.ser = serial.Serial(port=selectedPort, baudrate=9600, timeout=10)
     print("Connected to", globals.ser.name)
     time.sleep(2)
 
@@ -24,7 +30,6 @@ if __name__ == '__main__':
     else:
         exit()
     t1 = threading.Thread(target=record)
-    t1.daemon = True
     t1.start()
 
     # Remove every photo in directory
@@ -43,8 +48,8 @@ if __name__ == '__main__':
 
     t1.join()
     t2.join()
-
     print("Program terminating...")
     # Close all windows
+    globals.ser.close()
     globals.webcam.release()
     cv2.destroyAllWindows()

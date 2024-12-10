@@ -1,5 +1,6 @@
 # Files to ignore in GitHub
 __pycache__/
+venv
 arduinotest.py
 camtest.py
 *.jpg
