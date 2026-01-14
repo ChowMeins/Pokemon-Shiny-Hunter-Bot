@@ -4,7 +4,7 @@ using namespace std;
 Servo servo1; // Pin 2, controls buttons B and X
 Servo servo2; // Pin 3, controls buttons A and Y
 Servo servo3; // 
-Servo servo4;
+Servo servo4; 
 Servo servo5;
 Servo servos[5];
 int servoPins[] = {2,3,6,7,8};
@@ -22,6 +22,8 @@ int dPos = 120;
 int rPos = 140;
 int lPos = 60;
 int resetPos = 15;
+
+bool isReady = true;
 /* 
 Servo 1 = B and X
 Servo 2 = A and Y
@@ -29,11 +31,10 @@ Servo 3 = Start + Select
 Servo 4 = L and R
 Servo 5 = U and D
 */
-void sendInput(Servo servo, int rotationAmount, int delayTime) {
+void sendInput(Servo &servo, int rotationAmount, int delayTime) {
   int currRotation = servo.read();
   // Initiate actuation of arduino
   while(currRotation != rotationAmount) {
-    currRotation = servo.read();
     if(currRotation < rotationAmount) {
       currRotation++;
     } else {
@@ -46,7 +47,6 @@ void sendInput(Servo servo, int rotationAmount, int delayTime) {
 
   // Release servo from button
   while(currRotation != defaultPos) {
-      currRotation = servo.read();
     if(currRotation < defaultPos) {
       currRotation++;
     }
@@ -62,14 +62,19 @@ void sendInput(Servo servo, int rotationAmount, int delayTime) {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  for(int i = 0; i < sizeof(servos); ++i) {
+  for(int i = 0; i < 5; ++i) {
     servos[i].attach(servoPins[i]);
   }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-    String inputString = Serial.readStringUntil('\n');
+  if (isReady == true) {
+    Serial.println("READY");
+    isReady = false;
+  }
+  if (Serial.available() > 0) {
+    String inputString = Serial.readStringUntil('\n'); // String format: "(button) (delay), ex: "a 100"
     if (inputString == "light") {
       Serial.println(analogRead(sensorPin));
     }
@@ -111,8 +116,9 @@ void loop() {
             case 'f':
               Serial.flush();
               break;
-          break;
         }
       }
     }
+    isReady = true;
+  }
 }

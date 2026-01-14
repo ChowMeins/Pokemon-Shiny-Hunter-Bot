@@ -4,3 +4,4 @@ venv
 arduinotest.py
 camtest.py
 *.jpg
+*.pt
