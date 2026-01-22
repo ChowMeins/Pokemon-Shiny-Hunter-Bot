@@ -5,11 +5,6 @@ import sys
 import threading
 import cv2
 
-app = QApplication(sys.argv)
-
-with open("style.qss", "r") as f:
-    app.setStyleSheet(f.read())
-
 class WebcamFeed(QObject):
     frame_ready = Signal(object)
     def __init__(self):
@@ -54,7 +49,6 @@ class MainWindow(QMainWindow):
         header_widget.setLayout(header_layout)
         header_layout.setAlignment(Qt.AlignLeft)
         header_widget.setProperty("class", "container")
-        header_widget.setStyleSheet("border: 1px solid red;")
         header_heading = QLabel("Encounter Tracker") # Header label
         header_heading.setProperty("class", "header")
         header_icon = QLabel() # Header icon
@@ -67,7 +61,6 @@ class MainWindow(QMainWindow):
         feed_and_stats_widget = QWidget()
         feed_and_stats_layout = QHBoxLayout()
         feed_and_stats_layout.setContentsMargins(0, 0, 0, 0)
-        feed_and_stats_widget.setStyleSheet("border: 1px solid blue;")
         feed_and_stats_widget.setLayout(feed_and_stats_layout)
 
         # Live feed
@@ -83,7 +76,6 @@ class MainWindow(QMainWindow):
         self.video_label.setMinimumSize(640, 480)
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setScaledContents(True)
-        print(self.video_label.size())
         live_feed_layout.addWidget(self.video_label)
         live_feed_widget.setLayout(live_feed_layout)
 
@@ -95,9 +87,20 @@ class MainWindow(QMainWindow):
         statistics_header = QLabel("Statistics")
         statistics_header.setProperty("class", "header")
         statistics_layout.addWidget(statistics_header)
+
+        encounter_box = QWidget()
+        encounter_box_layout = QVBoxLayout()
+        encounter_header = QLabel("Total Encounters")
+        encounter_header.setStyleSheet("font-size: 12px; color: rgb(255, 255, 255)")
+        encounter_count_label = QLabel("0")
+        encounter_count_label.setStyleSheet("font-size: 24px; color: rgb(96, 165, 250); font-weight: bold;")
+        encounter_box_layout.addWidget(encounter_header)
+        encounter_box_layout.addWidget(encounter_count_label)
+        encounter_box.setLayout(encounter_box_layout)
+
+        statistics_layout.addWidget(encounter_box)
         statistics_widget.setLayout(statistics_layout)
-
-
+        
         feed_and_stats_layout.addWidget(live_feed_widget)
         feed_and_stats_layout.addWidget(statistics_widget)
 
@@ -114,15 +117,14 @@ class MainWindow(QMainWindow):
         bytes_per_line = ch * w # 3 colors (1 byte each) * width for RGB
         qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888) 
         pixmap = QPixmap.fromImage(qt_image)
-        scaled_pixmap = pixmap.scaled(
-            self.video_label.width(),
-            self.video_label.height(),
-            Qt.KeepAspectRatio,
-            Qt.FastTransformation)
-        self.video_label.setPixmap(scaled_pixmap)
+        self.video_label.setPixmap(pixmap)
         #print(self.video_label.size())
-window = MainWindow()
-window.show()
 
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
 
-app.exec()
+    with open("style.qss", "r") as f:
+        app.setStyleSheet(f.read())
+    window = MainWindow()
+    window.show()
+    app.exec()
