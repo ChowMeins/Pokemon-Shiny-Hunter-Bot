@@ -1,6 +1,6 @@
 QWidget {
     background-color: rgb(17, 24, 39);
-    border-radius: 12px;
+    border-radius: 6px;
 }
 QWidget[class="container"] {
     background-color: rgb(31, 41, 55); 
