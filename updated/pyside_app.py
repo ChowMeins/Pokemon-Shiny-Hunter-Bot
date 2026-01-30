@@ -1,11 +1,13 @@
+from enum import Enum
 from PySide6.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QMessageBox, QSizePolicy
-from PySide6.QtGui import QIcon, QImage, QPixmap
-from PySide6.QtCore import Qt, QObject, Signal
+from PySide6.QtGui import QIcon, QImage, QPixmap, QPainter, QColor, QPen
+from PySide6.QtCore import Qt, QObject, Signal, QRect, QPoint, QSize
 import serial
 import serial.tools.list_ports
 import sys
 import threading
 import cv2
+
 
 class PortSelectionDialog(QDialog):
     def __init__(self):
@@ -36,7 +38,6 @@ class PortSelectionDialog(QDialog):
                                         outline: none; 
                                      }
                                      """)
-        self.port_list
         self.initialize_list_ports()
 
         title = QLabel("Select Available Ports")
@@ -81,6 +82,7 @@ class PortSelectionDialog(QDialog):
         except serial.SerialException as e:
             QMessageBox.critical(self, "Connection Error", f"Failed to connect: {str(e)}")
 
+
 class WebcamFeed(QObject):
     frame_ready = Signal(object)
     def __init__(self):
@@ -103,8 +105,221 @@ class WebcamFeed(QObject):
             if ret:
                 with self.lock:
                     self.frame = frame
-                self.frame_ready.emit(frame)
-        
+                self.frame_ready.emit(frame) # Emit signal for frame updated in webcam feed (runs update_video_feed)
+
+
+class Drag(Enum):
+    NONE = 0
+    MOVE = 1
+    RESIZE_TL = 2  # Top-left corner
+    RESIZE_TR = 3  # Top-right corner
+    RESIZE_BL = 4  # Bottom-left corner
+    RESIZE_BR = 5  # Bottom-right corner
+    RESIZE_T = 6   # Top edge
+    RESIZE_B = 7   # Bottom edge
+    RESIZE_L = 8   # Left edge
+    RESIZE_R = 9   # Right edge
+    NEW_REGION = 10  # Creating a new region
+
+
+class VideoWithCropOverlay(QLabel):
+    def __init__(self):
+        super().__init__()
+        self.setMouseTracking(True)
+        self.top_left_corner = QPoint(self.size().width() * 0.1, self.size().height() * 0.1)
+        self.crop_region = QRect(self.top_left_corner, QSize(self.size().width() - self.top_left_corner.x() * 2, self.size().height() - self.top_left_corner.y() * 2))
+        self.top_right_corner = self.crop_region.topRight()
+        self.bottom_left_corner = self.crop_region.bottomLeft()
+        self.bottom_right_corner = self.crop_region.bottomRight()
+        # For creating new crop region
+        self.start_point = None
+        self.end_point = None
+
+        self.video_feed = QLabel()
+        self.dragging = False
+        self.drag_mode = Drag.NONE
+        # Handles for diagonally resizing crop region
+        self.handle_size = QSize(8, 8)
+        self.top_left_handle = QRect(QPoint(self.top_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
+        self.top_right_handle = QRect(QPoint(self.top_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
+        self.bottom_left_handle = QRect(QPoint(self.bottom_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
+        self.bottom_right_handle = QRect(QPoint(self.bottom_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
+        # Edges for vertically/horizontally resizing crop region
+        self.top_edge = QRect(self.top_left_handle.topRight(), self.top_right_handle.bottomLeft())
+        self.bottom_edge = QRect(self.bottom_left_handle.topRight(), self.bottom_right_handle.bottomLeft())
+        self.left_edge = QRect(self.top_left_handle.bottomLeft(), self.bottom_left_handle.topRight())
+        self.right_edge = QRect(self.top_right_handle.bottomLeft(), self.bottom_right_handle.topRight())
+
+    def get_drag_mode(self, pos):
+        if self.crop_region is None or self.crop_region.isNull():
+            return Drag.NONE
+        if self.top_left_handle.contains(pos): 
+            print("Top-left handle clicked")
+            return Drag.RESIZE_TL
+        elif self.top_right_handle.contains(pos):
+            print("Top-right handle clicked")
+            return Drag.RESIZE_TR
+        elif self.bottom_left_handle.contains(pos):
+            print("Bottom-left handle clicked")
+            return Drag.RESIZE_BL
+        elif self.bottom_right_handle.contains(pos):
+            print("Bottom-right handle clicked")
+            return Drag.RESIZE_BR
+        elif self.top_edge.contains(pos):
+            print("Top edge clicked")
+            return Drag.RESIZE_T
+        elif self.bottom_edge.contains(pos):
+            print("Bottom edge clicked")
+            return Drag.RESIZE_B
+        elif self.left_edge.contains(pos):
+            print("Left edge clicked")
+            return Drag.RESIZE_L
+        elif self.right_edge.contains(pos):
+            print("Right edge clicked")
+            return Drag.RESIZE_R
+        elif self.crop_region.contains(pos):
+            print("Inside crop region")
+            return Drag.MOVE
+        print("Creating new region")
+        return Drag.NEW_REGION
+    
+    def mousePressEvent(self, event):
+        mouse_pos = event.position().toPoint() # Convert QPointF -> QPoint
+        if event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.drag_mode = self.get_drag_mode(mouse_pos)
+            if self.drag_mode == Drag.NEW_REGION:
+                self.start_point = mouse_pos
+                self.end_point = mouse_pos
+            elif self.drag_mode == Drag.MOVE:
+                self.move_start_point = mouse_pos
+            self.update_handles_and_edges()
+            self.update()
+
+    def mouseMoveEvent(self, event):
+        mouse_pos = event.position().toPoint()
+        if self.drag_mode == Drag.NEW_REGION:
+            self.setCursor(Qt.CrossCursor)
+        elif self.top_left_handle.contains(mouse_pos) or self.bottom_right_handle.contains(mouse_pos):
+            self.setCursor(Qt.SizeFDiagCursor)
+        elif self.top_right_handle.contains(mouse_pos) or self.bottom_left_handle.contains(mouse_pos):
+            self.setCursor(Qt.SizeBDiagCursor)
+        elif self.top_edge.contains(mouse_pos) or self.bottom_edge.contains(mouse_pos):
+            self.setCursor(Qt.SizeVerCursor)
+        elif self.left_edge.contains(mouse_pos) or self.right_edge.contains(mouse_pos):
+            self.setCursor(Qt.SizeHorCursor)
+        elif self.crop_region.contains(mouse_pos):
+            self.setCursor(Qt.SizeAllCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+
+        if self.dragging:
+            # Create new crop region
+            if self.drag_mode == Drag.NEW_REGION:
+                self.end_point = mouse_pos
+            # Resizing corners
+            elif self.drag_mode == Drag.RESIZE_TL:
+                self.top_left_corner = mouse_pos
+            elif self.drag_mode == Drag.RESIZE_TR:
+                self.top_left_corner.setY(mouse_pos.y())
+                self.bottom_right_corner.setX(mouse_pos.x())
+            elif self.drag_mode == Drag.RESIZE_BL:
+                self.top_left_corner.setX(mouse_pos.x())
+                self.bottom_right_corner.setY(mouse_pos.y())
+            elif self.drag_mode == Drag.RESIZE_BR:
+                self.bottom_right_corner = mouse_pos
+            # Resizing edges
+            elif self.drag_mode == Drag.RESIZE_T:
+                self.top_left_corner.setY(mouse_pos.y())
+            elif self.drag_mode == Drag.RESIZE_B:
+                self.bottom_right_corner.setY(mouse_pos.y())
+            elif self.drag_mode == Drag.RESIZE_L:
+                self.top_left_corner.setX(mouse_pos.x())
+            elif self.drag_mode == Drag.RESIZE_R:
+                self.bottom_right_corner.setX(mouse_pos.x())
+            # Moving crop region
+            elif self.drag_mode == Drag.MOVE:
+                delta = mouse_pos - self.move_start_point
+                self.top_left_corner += delta
+                self.bottom_right_corner += delta
+                self.move_start_point = mouse_pos
+            # Check for out-of-bounds and adjust
+            if mouse_pos.x() > self.width():
+                self.bottom_right_corner.setX(self.width())
+            if mouse_pos.y() > self.height():
+                self.bottom_right_corner.setY(self.height())
+            if mouse_pos.x() < 0:
+                self.top_left_corner.setX(0)
+            if mouse_pos.y() < 0:
+                self.top_left_corner.setY(0)
+
+            if self.start_point and self.end_point:
+                self.top_left_corner = QPoint(min(self.start_point.x(), self.end_point.x()), min(self.start_point.y(), self.end_point.y()))
+                self.bottom_right_corner = QPoint(max(self.start_point.x(), self.end_point.x()), max(self.start_point.y(), self.end_point.y()))
+
+            self.crop_region = QRect(self.top_left_corner, self.bottom_right_corner)
+            self.update_handles_and_edges()
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        self.setCursor(Qt.ArrowCursor)
+        if event.button() == Qt.LeftButton:
+            self.dragging = False
+            self.drag_mode = Drag.NONE
+            if self.start_point and self.end_point:
+                self.top_left_corner = QPoint(min(self.start_point.x(), self.end_point.x()), min(self.start_point.y(), self.end_point.y()))
+                self.bottom_right_corner = QPoint(max(self.start_point.x(), self.end_point.x()), max(self.start_point.y(), self.end_point.y()))
+                self.start_point = None
+                self.end_point = None
+            self.crop_region = QRect(self.top_left_corner, self.bottom_right_corner)
+            self.update_handles_and_edges()
+            self.update()
+
+    def update_handles_and_edges(self):
+        if self.crop_region:
+            # top left corner is smallest tuple, bottom right is largest. top right is 2 away from top left, bottom left is 2 away from bottom right in the list
+            corners = [self.crop_region.topLeft().toTuple(), self.crop_region.topRight().toTuple(), self.crop_region.bottomLeft().toTuple(), self.crop_region.bottomRight().toTuple()]
+            tl_corner = min(corners)
+            br_corner = max(corners)
+            self.top_right_corner, self.bottom_left_corner = QPoint(br_corner[0], tl_corner[1]), QPoint(tl_corner[0], br_corner[1])
+            self.top_left_corner, self.bottom_right_corner = QPoint(tl_corner[0], tl_corner[1]), QPoint(br_corner[0], br_corner[1])
+            #print(corners)
+            #print(tl_corner, tr_corner, bl_corner, br_corner)
+            self.top_left_handle = QRect(self.top_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.top_right_handle = QRect(self.top_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.bottom_left_handle = QRect(self.bottom_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.bottom_right_handle = QRect(self.bottom_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            
+            self.top_edge = QRect(self.top_left_handle.topRight(), self.top_right_handle.bottomLeft())
+            self.bottom_edge = QRect(self.bottom_left_handle.topRight(), self.bottom_right_handle.bottomLeft())
+            self.left_edge = QRect(self.top_left_handle.bottomLeft(), self.bottom_left_handle.topRight())
+            self.right_edge = QRect(self.top_right_handle.bottomLeft(), self.bottom_right_handle.topRight())
+            
+    def reset_crop_region(self):
+        self.start_point = QPoint(self.size().width() * 0.1, self.size().height() * 0.1)
+        self.crop_region = QRect(self.start_point, QSize(self.size().width() - self.start_point.x() * 2, self.size().height() - self.start_point.y() * 2))
+        self.update_handles_and_edges()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.crop_region:
+            painter = QPainter(self)
+            pen = QPen(QColor(52, 235, 137), 2, Qt.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(self.crop_region)
+            pen = QPen(QColor(255, 0, 0), 1)
+            painter.setPen(pen)
+            # Draw edges
+            painter.drawRect(self.top_edge)
+            painter.drawRect(self.bottom_edge)
+            painter.drawRect(self.left_edge)
+            painter.drawRect(self.right_edge)
+            # Draw handles
+            painter.fillRect(self.top_left_handle, QColor(52, 235, 137))
+            painter.fillRect(self.top_right_handle, QColor(52, 235, 137))
+            painter.fillRect(self.bottom_left_handle, QColor(52, 235, 137))
+            painter.fillRect(self.bottom_right_handle, QColor(52, 235, 137))
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -152,16 +367,17 @@ class MainWindow(QMainWindow):
         live_feed_header = QLabel("Live Feed")
         live_feed_header.setProperty("class", "header")
         live_feed_layout.addWidget(live_feed_header)
+        live_feed_widget.setLayout(live_feed_layout)
 
         # Webcam Feed
         self.webcam_container = QWidget()
         self.webcam_container_layout = QStackedLayout()
-        self.video_label = QLabel()
-        self.video_label.setMinimumSize(640, 480)
-        self.video_label.setAlignment(Qt.AlignCenter)
-        self.video_label.setScaledContents(True)
-        live_feed_layout.addWidget(self.video_label)
-        live_feed_widget.setLayout(live_feed_layout)
+
+        self.video_feed = VideoWithCropOverlay()
+
+        self.webcam_container_layout.addWidget(self.video_feed)
+        self.webcam_container.setLayout(self.webcam_container_layout)
+        live_feed_layout.addWidget(self.webcam_container)
 
         # Crop buttons
         crop_region_widget = QWidget()
@@ -175,6 +391,7 @@ class MainWindow(QMainWindow):
         reset_crop_button = QPushButton("Reset Crop")
         reset_crop_button.setMinimumHeight(24)
         reset_crop_button.setStyleSheet("font-weight: bold; background-color: #888888")
+        reset_crop_button.clicked.connect(self.video_feed.reset_crop_region)
         crop_region_layout.addWidget(set_crop_region_button)
         crop_region_layout.addWidget(reset_crop_button)
         crop_region_widget.setLayout(crop_region_layout)
@@ -235,8 +452,9 @@ class MainWindow(QMainWindow):
         bytes_per_line = ch * w # 3 colors (1 byte each) * width for RGB
         qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888) 
         pixmap = QPixmap.fromImage(qt_image)
-        self.video_label.setPixmap(pixmap)
+        self.video_feed.setPixmap(pixmap)
         #print(self.video_label.size())
+        #print(self.webcam_container.pos(), self.video_label.pos())
     
 
 if __name__ == "__main__":
