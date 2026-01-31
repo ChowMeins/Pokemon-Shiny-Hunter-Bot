@@ -1,7 +1,7 @@
 from enum import Enum
-from PySide6.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QMessageBox, QSizePolicy
+from PySide6.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QMessageBox, QSizePolicy, QComboBox
 from PySide6.QtGui import QIcon, QImage, QPixmap, QPainter, QColor, QPen
-from PySide6.QtCore import Qt, QObject, Signal, QRect, QPoint, QSize
+from PySide6.QtCore import Qt, QObject, Signal, QRect, QPoint, QPointF, QSize
 import serial
 import serial.tools.list_ports
 import sys
@@ -126,11 +126,12 @@ class VideoWithCropOverlay(QLabel):
     def __init__(self):
         super().__init__()
         self.setMouseTracking(True)
-        self.top_left_corner = QPoint(self.size().width() * 0.1, self.size().height() * 0.1)
-        self.crop_region = QRect(self.top_left_corner, QSize(self.size().width() - self.top_left_corner.x() * 2, self.size().height() - self.top_left_corner.y() * 2))
+        self.resize(640, 480)
+        self.top_left_corner = QPointF(self.size().width() * 0.1, self.size().height() * 0.1)
+        self.crop_region = QRect(self.top_left_corner.toPoint(), QSize(self.size().width() - self.top_left_corner.x() * 2, self.size().height() - self.top_left_corner.y() * 2))
         self.top_right_corner = self.crop_region.topRight()
         self.bottom_left_corner = self.crop_region.bottomLeft()
-        self.bottom_right_corner = self.crop_region.bottomRight()
+        self.bottom_right_corner = self.crop_region.bottomRight().toPointF()
         # For creating new crop region
         self.start_point = None
         self.end_point = None
@@ -140,10 +141,10 @@ class VideoWithCropOverlay(QLabel):
         self.drag_mode = Drag.NONE
         # Handles for diagonally resizing crop region
         self.handle_size = QSize(8, 8)
-        self.top_left_handle = QRect(QPoint(self.top_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
+        self.top_left_handle = QRect(QPoint(self.top_left_corner.toPoint() - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
         self.top_right_handle = QRect(QPoint(self.top_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
         self.bottom_left_handle = QRect(QPoint(self.bottom_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
-        self.bottom_right_handle = QRect(QPoint(self.bottom_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
+        self.bottom_right_handle = QRect(QPoint(self.bottom_right_corner.toPoint() - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2)), self.handle_size)
         # Edges for vertically/horizontally resizing crop region
         self.top_edge = QRect(self.top_left_handle.topRight(), self.top_right_handle.bottomLeft())
         self.bottom_edge = QRect(self.bottom_left_handle.topRight(), self.bottom_right_handle.bottomLeft())
@@ -184,10 +185,10 @@ class VideoWithCropOverlay(QLabel):
         return Drag.NEW_REGION
     
     def mousePressEvent(self, event):
-        mouse_pos = event.position().toPoint() # Convert QPointF -> QPoint
+        mouse_pos = event.position()
         if event.button() == Qt.LeftButton:
             self.dragging = True
-            self.drag_mode = self.get_drag_mode(mouse_pos)
+            self.drag_mode = self.get_drag_mode(mouse_pos.toPoint())
             if self.drag_mode == Drag.NEW_REGION:
                 self.start_point = mouse_pos
                 self.end_point = mouse_pos
@@ -197,18 +198,20 @@ class VideoWithCropOverlay(QLabel):
             self.update()
 
     def mouseMoveEvent(self, event):
-        mouse_pos = event.position().toPoint()
+        mouse_pos = event.position()
+        mouse_pos_rounded = mouse_pos.toPoint()
+        # Set cursor type based on hover location
         if self.drag_mode == Drag.NEW_REGION:
             self.setCursor(Qt.CrossCursor)
-        elif self.top_left_handle.contains(mouse_pos) or self.bottom_right_handle.contains(mouse_pos):
+        elif self.top_left_handle.contains(mouse_pos_rounded) or self.bottom_right_handle.contains(mouse_pos_rounded):
             self.setCursor(Qt.SizeFDiagCursor)
-        elif self.top_right_handle.contains(mouse_pos) or self.bottom_left_handle.contains(mouse_pos):
+        elif self.top_right_handle.contains(mouse_pos_rounded) or self.bottom_left_handle.contains(mouse_pos_rounded):
             self.setCursor(Qt.SizeBDiagCursor)
-        elif self.top_edge.contains(mouse_pos) or self.bottom_edge.contains(mouse_pos):
+        elif self.top_edge.contains(mouse_pos_rounded) or self.bottom_edge.contains(mouse_pos_rounded):
             self.setCursor(Qt.SizeVerCursor)
-        elif self.left_edge.contains(mouse_pos) or self.right_edge.contains(mouse_pos):
+        elif self.left_edge.contains(mouse_pos_rounded) or self.right_edge.contains(mouse_pos_rounded):
             self.setCursor(Qt.SizeHorCursor)
-        elif self.crop_region.contains(mouse_pos):
+        elif self.crop_region.contains(mouse_pos_rounded):
             self.setCursor(Qt.SizeAllCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
@@ -254,10 +257,10 @@ class VideoWithCropOverlay(QLabel):
                 self.top_left_corner.setY(0)
 
             if self.start_point and self.end_point:
-                self.top_left_corner = QPoint(min(self.start_point.x(), self.end_point.x()), min(self.start_point.y(), self.end_point.y()))
-                self.bottom_right_corner = QPoint(max(self.start_point.x(), self.end_point.x()), max(self.start_point.y(), self.end_point.y()))
+                self.top_left_corner = QPointF(min(self.start_point.x(), self.end_point.x()), min(self.start_point.y(), self.end_point.y()))
+                self.bottom_right_corner = QPointF(max(self.start_point.x(), self.end_point.x()), max(self.start_point.y(), self.end_point.y()))
 
-            self.crop_region = QRect(self.top_left_corner, self.bottom_right_corner)
+            self.crop_region = QRect(self.top_left_corner.toPoint(), self.bottom_right_corner.toPoint())
             self.update_handles_and_edges()
             self.update()
 
@@ -271,24 +274,38 @@ class VideoWithCropOverlay(QLabel):
                 self.bottom_right_corner = QPoint(max(self.start_point.x(), self.end_point.x()), max(self.start_point.y(), self.end_point.y()))
                 self.start_point = None
                 self.end_point = None
-            self.crop_region = QRect(self.top_left_corner, self.bottom_right_corner)
+            self.crop_region = QRect(self.top_left_corner.toPoint(), self.bottom_right_corner.toPoint())
             self.update_handles_and_edges()
             self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        old_size = event.oldSize()
+        new_size = event.size()
+        print(f"Resized from {old_size} to {new_size}")
+        
+        # Use DIVISION for ratio, not subtraction
+        x_ratio = new_size.width() / old_size.width() if old_size.width() > 0 else 1
+        y_ratio = new_size.height() / old_size.height() if old_size.height() > 0 else 1
+        
+        if self.crop_region:
+            # MULTIPLY coordinates by ratio, don't add delta
+            self.top_left_corner = QPointF(self.top_left_corner.x() * x_ratio, self.top_left_corner.y() * y_ratio)
+            self.bottom_right_corner = QPointF(self.bottom_right_corner.x() * x_ratio, self.bottom_right_corner.y() * y_ratio)
+            self.crop_region = QRect(self.top_left_corner.toPoint(), self.bottom_right_corner.toPoint())
+            self.update_handles_and_edges()
 
     def update_handles_and_edges(self):
         if self.crop_region:
             # top left corner is smallest tuple, bottom right is largest. top right is 2 away from top left, bottom left is 2 away from bottom right in the list
-            corners = [self.crop_region.topLeft().toTuple(), self.crop_region.topRight().toTuple(), self.crop_region.bottomLeft().toTuple(), self.crop_region.bottomRight().toTuple()]
-            tl_corner = min(corners)
-            br_corner = max(corners)
-            self.top_right_corner, self.bottom_left_corner = QPoint(br_corner[0], tl_corner[1]), QPoint(tl_corner[0], br_corner[1])
-            self.top_left_corner, self.bottom_right_corner = QPoint(tl_corner[0], tl_corner[1]), QPoint(br_corner[0], br_corner[1])
+            self.top_right_corner = QPointF(self.bottom_right_corner.x(), self.top_left_corner.y())
+            self.bottom_left_corner = QPointF(self.top_left_corner.x(), self.bottom_right_corner.y())
             #print(corners)
             #print(tl_corner, tr_corner, bl_corner, br_corner)
-            self.top_left_handle = QRect(self.top_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
-            self.top_right_handle = QRect(self.top_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
-            self.bottom_left_handle = QRect(self.bottom_left_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
-            self.bottom_right_handle = QRect(self.bottom_right_corner - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.top_left_handle = QRect(self.top_left_corner.toPoint() - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.top_right_handle = QRect(self.top_right_corner.toPoint() - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.bottom_left_handle = QRect(self.bottom_left_corner.toPoint() - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
+            self.bottom_right_handle = QRect(self.bottom_right_corner.toPoint() - QPoint(self.handle_size.width() // 2, self.handle_size.height() // 2), self.handle_size)
             
             self.top_edge = QRect(self.top_left_handle.topRight(), self.top_right_handle.bottomLeft())
             self.bottom_edge = QRect(self.bottom_left_handle.topRight(), self.bottom_right_handle.bottomLeft())
@@ -296,8 +313,11 @@ class VideoWithCropOverlay(QLabel):
             self.right_edge = QRect(self.top_right_handle.bottomLeft(), self.bottom_right_handle.topRight())
             
     def reset_crop_region(self):
-        self.start_point = QPoint(self.size().width() * 0.1, self.size().height() * 0.1)
-        self.crop_region = QRect(self.start_point, QSize(self.size().width() - self.start_point.x() * 2, self.size().height() - self.start_point.y() * 2))
+        self.top_left_corner = QPointF(self.size().width() * 0.1, self.size().height() * 0.1)
+        self.crop_region = QRect(self.top_left_corner.toPoint(), QSize(self.size().width() - self.top_left_corner.x() * 2, self.size().height() - self.top_left_corner.y() * 2))
+        self.top_right_corner = self.crop_region.topRight()
+        self.bottom_left_corner = self.crop_region.bottomLeft()
+        self.bottom_right_corner = self.crop_region.bottomRight().toPointF()
         self.update_handles_and_edges()
 
     def paintEvent(self, event):
@@ -336,7 +356,7 @@ class MainWindow(QMainWindow):
         header_widget = QWidget()          
         header_widget.setMaximumHeight(80)
         header_layout = QHBoxLayout()
-        header_layout.setSpacing(4)
+        header_layout.setSpacing(8)
         header_widget.setLayout(header_layout)
         header_layout.setAlignment(Qt.AlignLeft)
         header_widget.setProperty("class", "container")
@@ -345,12 +365,19 @@ class MainWindow(QMainWindow):
         header_icon = QLabel() # Header icon
         header_icon.setProperty("class", "header")
         header_icon.setPixmap(QIcon("icons/sparkle.svg").pixmap(32, 32))
-        connect_arduino_button = QPushButton("Connect Arduino")
-        connect_arduino_button.setStyleSheet("padding: 6px;font-weight: bold; background-color: green")
-        connect_arduino_button.clicked.connect(self.open_port_dialog)
+        com_combobox = QComboBox()
+        com_combobox.setMinimumWidth(100)
+        com_combobox.setStyleSheet("font-size: 14px; padding: 6px; border-radius: none; font-weight: bold; background-color: rgb(17, 24, 39); color: white")
+        serial_ports = serial.tools.list_ports.comports()
+        for port in serial_ports:
+            com_combobox.addItem(f"{port.device}")
+        connect_arduino_button = QPushButton("Connect")
+        connect_arduino_button.setMinimumWidth(100)
+        connect_arduino_button.setStyleSheet("font-size: 14px; padding: 6px 3px;font-weight: bold; background-color: green")
         header_layout.addWidget(header_icon)
         header_layout.addWidget(header_heading)
         header_layout.addStretch()
+        header_layout.addWidget(com_combobox)
         header_layout.addWidget(connect_arduino_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         # Live feed (left) and statistics (right)
@@ -361,6 +388,7 @@ class MainWindow(QMainWindow):
 
         # Live feed
         live_feed_widget = QWidget()
+        live_feed_widget.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
         live_feed_widget.setProperty("class", "container")
         live_feed_layout = QVBoxLayout()
         live_feed_layout.setAlignment(Qt.AlignTop)
@@ -371,10 +399,12 @@ class MainWindow(QMainWindow):
 
         # Webcam Feed
         self.webcam_container = QWidget()
-        self.webcam_container_layout = QStackedLayout()
-
+        self.webcam_container.setStyleSheet("border: 1px solid green;")
+        self.webcam_container_layout = QVBoxLayout()
+        self.webcam_container_layout.setAlignment(Qt.AlignTop)
         self.video_feed = VideoWithCropOverlay()
-
+        self.video_feed.setScaledContents(True)
+        self.video_feed.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.webcam_container_layout.addWidget(self.video_feed)
         self.webcam_container.setLayout(self.webcam_container_layout)
         live_feed_layout.addWidget(self.webcam_container)
@@ -453,8 +483,8 @@ class MainWindow(QMainWindow):
         qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888) 
         pixmap = QPixmap.fromImage(qt_image)
         self.video_feed.setPixmap(pixmap)
-        #print(self.video_label.size())
-        #print(self.webcam_container.pos(), self.video_label.pos())
+            #print(self.video_label.size())
+            #print(self.webcam_container.pos(), self.video_label.pos())
     
 
 if __name__ == "__main__":
