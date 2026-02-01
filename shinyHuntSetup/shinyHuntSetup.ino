@@ -23,7 +23,6 @@ int rPos = 140;
 int lPos = 60;
 int resetPos = 15;
 
-bool isReady = true;
 /* 
 Servo 1 = B and X
 Servo 2 = A and Y
@@ -69,14 +68,16 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  if (isReady == true) {
-    Serial.println("READY");
-    isReady = false;
-  }
   if (Serial.available() > 0) {
     String inputString = Serial.readStringUntil('\n'); // String format: "(button) (delay), ex: "a 100"
     if (inputString == "light") {
       Serial.println(analogRead(sensorPin));
+    }
+    else if (input == "flush") { // clear input buffer without executing any commands sent
+      while (Serial.available() > 0) {
+        Serial.readStringUntil("\n")
+      }
+      Serial.println("OK")
     }
     else {
       input = inputString[0];
@@ -110,15 +111,12 @@ void loop() {
             case 'r':
               sendInput(servos[3], rPos, delayTime);
               break;
-            case 'e':
+            case 'e': // Soft reset
               sendInput(servos[2], resetPos, delayTime);
               break;
-            case 'f':
-              Serial.flush();
-              break;
         }
+        Serial.println("OK")
       }
     }
-    isReady = true;
   }
 }

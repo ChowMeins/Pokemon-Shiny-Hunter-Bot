@@ -1,87 +1,13 @@
 from enum import Enum
-from PySide6.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QMessageBox, QSizePolicy, QComboBox
+from PySide6.QtWidgets import QApplication, QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QMessageBox, QSizePolicy, QComboBox, QSpinBox
 from PySide6.QtGui import QIcon, QImage, QPixmap, QPainter, QColor, QPen
-from PySide6.QtCore import Qt, QObject, Signal, QRect, QPoint, QPointF, QSize
+from PySide6.QtCore import Qt, QObject, QThread, Signal, QRect, QPoint, QPointF, QSize
 import serial
 import serial.tools.list_ports
 import sys
 import threading
 import cv2
-
-
-class PortSelectionDialog(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Select Arduino Port")
-        self.selected_port = None
-        self.serial_connection = None
-        self.port_list = QListWidget()
-        self.port_list.setFocusPolicy(Qt.NoFocus) # removes white border when selected
-        self.port_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
-        self.port_list.setContentsMargins(0, 0, 0, 0)
-        self.port_list.setStyleSheet("""
-                                     QListWidget {
-                                        padding: 0px; 
-                                        margin: 0px; 
-                                        border: 2px solid red;
-                                        background-color: rgb(31, 41, 55);
-                                     }
-                                     QListWidget::item {
-                                        padding: 4px;
-                                        margin: 0px;
-                                        border: none;
-                                        outline: none; 
-                                     }
-                                     QListWidget::item:selected {
-                                        background-color: rgb(75, 85, 99);
-                                        border: none;
-                                        outline: none; 
-                                     }
-                                     """)
-        self.initialize_list_ports()
-
-        title = QLabel("Select Available Ports")
-        title.setStyleSheet("font-size: 18px; font-weight: bold")
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignTop)
-        label = QLabel("Available Ports:")
-        connect_button = QPushButton("Connect")
-        connect_button.setStyleSheet("padding: 6px; font-weight: bold; background-color: green")
-        connect_button.clicked.connect(self.connect_to_port)
-
-        layout.addWidget(title)
-        layout.addWidget(label)
-        layout.addWidget(self.port_list, stretch=0)
-        layout.addStretch()
-        layout.addWidget(connect_button)
-
-        self.setLayout(layout)
-        self.resize(400, 300)
-
-    def initialize_list_ports(self):
-        ports = serial.tools.list_ports.comports()
-        for port in ports:
-            self.port_list.addItem(f"{port.device}-{port.description}")
-        self.port_list.clearSelection()
-
-    def connect_to_port(self):
-        current_item = self.port_list.currentItem()
-        print(current_item.text())
-        if not current_item or not self.port_list.selectedItems() or current_item.text() == "No ports found":
-            QMessageBox.warning(self, "No Selection", "Please select a port")
-            return
-        
-        port_name = current_item.text().split('-')[0]
-        try:
-            self.serial_connection = serial.Serial(port_name, 9600, timeout=1)
-            self.selected_port = port_name
-            
-            QMessageBox.information(self, "Success", f"Connected to {port_name}")
-            self.accept()  # Close dialog with success
-            
-        except serial.SerialException as e:
-            QMessageBox.critical(self, "Connection Error", f"Failed to connect: {str(e)}")
-
+from arduino_controller import ArduinoController
 
 class WebcamFeed(QObject):
     frame_ready = Signal(object)
@@ -340,11 +266,27 @@ class VideoWithCropOverlay(QLabel):
             painter.fillRect(self.bottom_left_handle, QColor(52, 235, 137))
             painter.fillRect(self.bottom_right_handle, QColor(52, 235, 137))
 
+class ArduinoConnectionThread(QThread):
+    connected = Signal(object)  # Success: sends ArduinoController
+    failed = Signal(str)  # Failure: sends error message
+    
+    def __init__(self, port):
+        super().__init__()
+        self.port = port
+    
+    def run(self):
+        try:
+            controller = ArduinoController(port=self.port)
+            self.connected.emit(controller)
+        except serial.SerialException as e:
+            self.failed.emit(str(e))
+    
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Encounter Tracker")
         self.webcam_stream = WebcamFeed()
+        self.arduino_controller = None
         
         main_container = QWidget()
         self.setCentralWidget(main_container)
@@ -365,20 +307,28 @@ class MainWindow(QMainWindow):
         header_icon = QLabel() # Header icon
         header_icon.setProperty("class", "header")
         header_icon.setPixmap(QIcon("icons/sparkle.svg").pixmap(32, 32))
+        self.status_indicator = QLabel("●")
+        self.status_indicator.setStyleSheet("color: #dc3545; font-size: 18px; background-color: transparent;")
+        self.connection_state_label = QLabel("Not Connected")
+        self.connection_state_label.setStyleSheet("font-size: 14px; padding: 6px; border-radius: none; font-weight: bold; background-color: rgb(17, 24, 39); border: 1px solid rgb(31, 41, 55); color: white;")
+
         com_combobox = QComboBox()
         com_combobox.setMinimumWidth(100)
         com_combobox.setStyleSheet("font-size: 14px; padding: 6px; border-radius: none; font-weight: bold; background-color: rgb(17, 24, 39); color: white")
         serial_ports = serial.tools.list_ports.comports()
         for port in serial_ports:
             com_combobox.addItem(f"{port.device}")
-        connect_arduino_button = QPushButton("Connect")
-        connect_arduino_button.setMinimumWidth(100)
-        connect_arduino_button.setStyleSheet("font-size: 14px; padding: 6px 3px;font-weight: bold; background-color: green")
+        self.connect_arduino_button = QPushButton("Connect")
+        self.connect_arduino_button.setMinimumWidth(100)
+        self.connect_arduino_button.setStyleSheet("font-size: 14px; padding: 6px 3px;font-weight: bold; background-color: green")
+        self.connect_arduino_button.clicked.connect(lambda: self.connect_arduino(com_combobox.currentText()))
         header_layout.addWidget(header_icon)
         header_layout.addWidget(header_heading)
         header_layout.addStretch()
+        header_layout.addWidget(self.status_indicator)
+        header_layout.addWidget(self.connection_state_label)
         header_layout.addWidget(com_combobox)
-        header_layout.addWidget(connect_arduino_button, alignment=Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self.connect_arduino_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         # Live feed (left) and statistics (right)
         feed_and_stats_widget = QWidget()
@@ -392,14 +342,14 @@ class MainWindow(QMainWindow):
         live_feed_widget.setProperty("class", "container")
         live_feed_layout = QVBoxLayout()
         live_feed_layout.setAlignment(Qt.AlignTop)
-        live_feed_header = QLabel("Live Feed")
+        live_feed_header = QLabel("LIVE FEED")
+        live_feed_header.setStyleSheet("font-size: 14px; color: #AAAAAA; font-weight: 600;")
         live_feed_header.setProperty("class", "header")
         live_feed_layout.addWidget(live_feed_header)
         live_feed_widget.setLayout(live_feed_layout)
 
         # Webcam Feed
         self.webcam_container = QWidget()
-        self.webcam_container.setStyleSheet("border: 1px solid green;")
         self.webcam_container_layout = QVBoxLayout()
         self.webcam_container_layout.setAlignment(Qt.AlignTop)
         self.video_feed = VideoWithCropOverlay()
@@ -429,10 +379,12 @@ class MainWindow(QMainWindow):
 
         # Statistics 
         statistics_widget = QWidget()
+        statistics_widget.setMinimumWidth(400)
         statistics_widget.setProperty("class", "container")
         statistics_layout = QVBoxLayout()
         statistics_layout.setAlignment(Qt.AlignTop)
-        statistics_header = QLabel("Statistics")
+        statistics_header = QLabel("STATISTICS")
+        statistics_header.setStyleSheet("font-size: 14px; color: #AAAAAA; font-weight: 600;")
         statistics_header.setProperty("class", "header")
         statistics_layout.addWidget(statistics_header)
 
@@ -458,10 +410,41 @@ class MainWindow(QMainWindow):
         time_elapsed_box_layout.addWidget(time_elapsed_count_label)
         time_elapsed_box.setLayout(time_elapsed_box_layout)
 
+        # Hunt combobox + Start Tracking button
+        hunt_and_start_container = QWidget()
+        #hunt_and_start_container.setMinimumHeight(60)
+        hunt_and_start_container.setLayout(QVBoxLayout())
+        self.hunt_selection_combobox = QComboBox()
+        self.hunt_selection_combobox.addItem("HGSS Random Encounters")
+        self.hunt_selection_combobox.addItem("Other Hunt Type")
+        self.hunt_selection_combobox.currentIndexChanged.connect(self.on_hunt_change)
+        self.hunt_selection_combobox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.tile_count_box = QWidget()
+        self.tile_count_box_layout = QHBoxLayout()
+        self.tile_count_box_layout.setSpacing(4)
+        tile_count_label = QLabel("Tile Count:")
+        tile_count_label.setStyleSheet("font-size: 12px; font-weight: 600;")
+        self.tile_count_spinbox = QSpinBox()
+        self.tile_count_spinbox.setValue(5)
+        self.tile_count_box_layout.addWidget(tile_count_label)
+        self.tile_count_box_layout.addWidget(self.tile_count_spinbox, stretch=1)
+        self.tile_count_box.setLayout(self.tile_count_box_layout)
+
+        start_tracking_button = QPushButton("Start Hunt")
+        start_tracking_button.setMinimumHeight(32)
+        start_tracking_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        start_tracking_button.setStyleSheet("font-weight: bold; background-color: green")
+        start_tracking_button.clicked.connect(lambda: self.start_hunt(self.hunt_selection_combobox.currentText().lower().replace(" ", "_"), self.tile_count_spinbox.value()))
+        hunt_and_start_container.layout().addWidget(self.hunt_selection_combobox)
+        hunt_and_start_container.layout().addWidget(self.tile_count_box)
+        hunt_and_start_container.layout().addWidget(start_tracking_button)
+
         statistics_layout.addWidget(encounter_box)
         statistics_layout.addWidget(time_elapsed_box)
+        statistics_layout.addStretch()
+        statistics_layout.addWidget(hunt_and_start_container)
         statistics_widget.setLayout(statistics_layout)
-        
+    
         feed_and_stats_layout.addWidget(live_feed_widget)
         feed_and_stats_layout.addWidget(statistics_widget)
 
@@ -471,9 +454,33 @@ class MainWindow(QMainWindow):
         self.webcam_stream.frame_ready.connect(self.update_video_feed)
         self.webcam_stream.start()
 
-    def open_port_dialog(self):
-        dialog = PortSelectionDialog()
-        dialog.exec()
+    def connect_arduino(self, com_port):
+        self.connect_arduino_button.setText("Connecting...")
+        self.connect_arduino_button.setEnabled(False)
+        # Create and start thread
+        self.connection_thread = ArduinoConnectionThread(com_port)
+        self.connection_thread.connected.connect(self.on_arduino_connected)
+        self.connection_thread.failed.connect(self.on_arduino_failed)
+        self.connection_thread.start()
+    
+    def on_arduino_connected(self, controller):
+        self.arduino_controller = controller
+        self.status_indicator.setStyleSheet("color: #28a745; font-size: 18px; background-color: transparent;")  # Green dot
+        self.connection_state_label.setText(f"Connected")
+        self.connect_arduino_button.setText("Connected")
+        self.connect_arduino_button.setEnabled(True)
+    
+    def on_arduino_failed(self, error_msg):
+        QMessageBox.critical(
+            self,
+            "Arduino Connection Failed",
+            f"Could not connect to Arduino:\n{error_msg}"
+        )
+        self.arduino_controller = None
+        self.status_indicator.setStyleSheet("color: #dc3545; font-size: 18px; background-color: transparent;")
+        self.connection_state_label.setText("Disconnected")
+        self.connect_arduino_button.setText("Connect")
+        self.connect_arduino_button.setEnabled(True)
 
     def update_video_feed(self, frame):
         rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -485,7 +492,20 @@ class MainWindow(QMainWindow):
         self.video_feed.setPixmap(pixmap)
             #print(self.video_label.size())
             #print(self.webcam_container.pos(), self.video_label.pos())
-    
+
+    def on_hunt_change(self):
+        if self.hunt_selection_combobox.currentText() == "HGSS Random Encounters":
+            self.tile_count_box.setVisible(True)
+            self.tile_count_box.setEnabled(True)
+        else:
+            self.tile_count_box.setVisible(False)
+            self.title_count_box.setEnabled(False)
+
+    def start_hunt(self, hunt_type, tile_count = None):
+        if self.arduino_controller:
+            self.arduino_controller.hunt_type = hunt_type
+            self.arduino_controller.tile_count = tile_count
+            self.arduino_controller.start()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

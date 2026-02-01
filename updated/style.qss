@@ -11,3 +11,43 @@ QLabel[class="header"] {
     font-weight: bold; 
     color: #FFFFFF; 
 }
+QComboBox, QSpinBox {
+    background-color: rgb(31, 41, 55);
+    color: white;
+    border: 1px solid rgb(55, 65, 81);
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
+    padding: 5px;
+    selection-background-color: rgb(59, 130, 246);
+}
+QComboBox:drop-down {
+    image: url(icons/down-arrow.svg);
+    image-position: center;
+    width: 14px;
+    padding: 2px;
+    border: 1px solid rgb(43, 50, 63);
+    background-color: rgb(55, 65, 81);
+}
+QSpinBox::up-button {
+    image: url(icons/up-arrow.svg);
+    width: 14px;
+    height: 10px;
+    padding: 2px;
+    border: 1px solid rgb(43, 50, 63);
+    background-color: rgb(55, 65, 81);
+}
+
+QSpinBox::down-button {
+    image: url(icons/down-arrow.svg);
+    width: 14px;
+    height: 10px;
+    padding: 2px;
+    border: 1px solid rgb(43, 50, 63);
+    background-color: rgb(55, 65, 81);
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background-color: rgb(75, 85, 99);
+}
